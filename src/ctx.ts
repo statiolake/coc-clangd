@@ -106,18 +106,21 @@ export class Ctx {
           const list = await next(document, position, context, token);
           if (!list) return [];
 
-          const { triggerKind, triggerCharacter, option } = context;
-          const mayPointMem = triggerKind === 2 && triggerCharacter === '.' && option && option.input === '';
           const tail = (await workspace.nvim.eval(`strpart(getline('.'), col('.') - 1)`)) as string;
           const semicolon = /^\s*$/.test(tail);
 
+          const line = context.option?.line;
           const items = Array.isArray(list) ? list : list.items;
           for (const item of items) {
             // @ts-expect-error
             if (item.score) item.score = Math.max(1, item.score) + item.score / 1000;
 
-            if (mayPointMem && item.insertText === `->${item.filterText}` && item.insertTextFormat === InsertTextFormat.Snippet) {
-              item.filterText = `.${item.filterText}`;
+            const isDotToArrowSuggestion = item.insertText === `->${item.filterText}` && item.textEdit && item.textEdit.range.start.character < position.character;
+            if (line && isDotToArrowSuggestion) {
+              // Workaround for https://github.com/neoclide/coc.nvim/issues/3918
+              // coc.nvim will adjust startcol to item.textEdit.range.start.character, so prepare filterText by appending dot.
+              const prefix = line.slice(item.textEdit!.range.start.character, position.character);
+              item.filterText = `${prefix}${item.filterText}`;
             }
             if (semicolon && item.insertTextFormat === InsertTextFormat.Snippet && item.textEdit) {
               const { textEdit } = item;
